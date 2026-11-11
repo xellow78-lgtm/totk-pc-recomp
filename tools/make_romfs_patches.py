@@ -50,6 +50,15 @@ with one character of the Normal font (E, an arrow for Shift, a bar for Space, L
 contents match the new one is hard-linked (copied where links fail) instead of compressed again; the summary's reused
 lists them. The output is byte for byte the same as without it.
 
+--over <folder>: the romfs folder of a mod (repeatable, the first that holds a file wins). An archive this script
+changes is then taken from the mod when it ships one: the same edits are made to the mod's copy, so the overlay
+keeps what the mod changed (a title logo in the Common archive, its texts in a Mals archive) and adds the 60 fps
+keys, the shape's layout and the prompts. totk.exe drops the prompts when a mod replaces one of their files
+(runtime/romfs.c overlay_init), so an overlay made this way goes with a mod folder that no longer holds those files.
+Where the mod already changed a value an edit expects, the edit stops with the pane's name, as for the game's own
+files; the two capture keys are the exception: a mod that moved or removed them keeps its own. The resource size
+table is always the RomFS's own, grown by what each archive gained over the RomFS's.
+
 Input: build/extracted/<version>/romfs (romfs.bin and index.json, verified by tools/extract.py). Output:
 build/<version>/romfs-patches/<path> by default (romfs-patches-<style> with --prompts), and <out>/manifest.tsv (path, size, SHA-256 of the overlay, SHA-256 of the original). Run with .venv-py314.
 """
@@ -78,6 +87,9 @@ ap.add_argument('--binds', type=Path, help='--prompts pc: a totk.ini whose bind_
 ap.add_argument('--xbox-prompts', dest='prompts', action='store_const', const='xbox', help='the same as --prompts xbox')
 ap.add_argument('--reuse', type=Path,
                 help='an overlay folder made before: its files with the same contents are linked, not compressed again')
+ap.add_argument('--over', type=Path, action='append', default=[], metavar='FOLDER',
+                help="a mod's romfs folder: an archive it holds is patched in place of the RomFS's, keeping the mod's "
+                     'changes (repeatable, the first that holds the file wins)')
 args = ap.parse_args()
 args.romfs = args.romfs or root / 'build/extracted' / args.version / 'romfs'
 args.out = args.out or root / 'build' / args.version / (f'romfs-patches-{args.prompts}' if args.prompts else 'romfs-patches')
@@ -358,12 +370,27 @@ with (args.romfs / 'romfs.bin').open('rb') as image:
         dictionaries[d.dict_id] = d
     prompt_files = (FONTS + (MALS if letter_panes else []) + [RESTBL]) if args.prompts else []
     originals = {path: read(path) for path in [ARCHIVE] + prompt_files}
+
+
+def unzs(raw):
+    return zstd.decompress(raw, zstd_dict=dictionaries.get(zstd.get_frame_info(raw).dictionary_id))
+
+
+# What each archive is patched from: a mod's copy (--over), else the RomFS's. The resource size table stays the
+# RomFS's: its entries grow by what an archive gained over the RomFS's, whatever it was patched from.
+over = {}
+for path in originals:
+    for folder in args.over if path != RESTBL else []:
+        if (folder / path).is_file():
+            over[path] = folder / path
+            break
+sources = {path: over[path].read_bytes() if path in over else raw for path, raw in originals.items()}
 raw = originals[ARCHIVE]
 info = zstd.get_frame_info(raw)
 dictionary = dictionaries[info.dictionary_id]
-original = zstd.decompress(raw, zstd_dict=dictionary)
+original = unzs(sources[ARCHIVE])
 blarc = bytearray(original)
-assert len(blarc) == info.decompressed_size
+assert ARCHIVE in over or len(blarc) == info.decompressed_size
 members = sarc_members(blarc)
 patched = {}
 for member, panes in MEMBERS.items():
@@ -372,10 +399,12 @@ for member, panes in MEMBERS.items():
     for name, ko, keys in flvi_keys(blarc, lo):
         if name not in panes:
             continue
+        if ARCHIVE in over and [(f, v) for f, v in keys] != [(0.0, 0), (1.0, 1)]:
+            continue   # the mod moved the key itself
         assert [(f, v) for f, v in keys] == [(0.0, 0), (1.0, 1)], (member, name, keys)
         struct.pack_into('<f', blarc, ko + 8, 0.0)
         changed.append(name)
-    assert sorted(changed) == sorted(panes), (member, changed)
+    assert ARCHIVE in over or sorted(changed) == sorted(panes), (member, changed)
     patched[member] = changed
 layout = []
 if args.aspect:
@@ -386,16 +415,15 @@ if args.aspect:
     layout = ultrawide.apply(blarc, members, width, height)
 diff = [i for i in range(len(original)) if original[i] != blarc[i]]
 touched = [members[m] for m in (*MEMBERS, *layout)]
-assert diff and all(any(lo <= i < hi for lo, hi in touched) for i in diff), diff
+assert (diff or ARCHIVE in over) and all(any(lo <= i < hi for lo, hi in touched) for i in diff), diff
 outputs = {ARCHIVE: bytes(blarc)}   # RomFS path -> new contents (before compression)
 prompts = None
 if args.prompts:
-    sizes = {ARCHIVE: len(original)}   # RomFS path -> size of the original's contents
+    sizes = {ARCHIVE: info.decompressed_size}   # RomFS path -> size of the RomFS original's contents
 
     def unpack(path):
-        frame = zstd.get_frame_info(originals[path])
-        data = zstd.decompress(originals[path], zstd_dict=dictionaries.get(frame.dictionary_id))
-        sizes[path] = len(data)
+        data = unzs(sources[path])
+        sizes[path] = len(data) if path not in over else len(unzs(originals[path]))
         return data
     archives = {path: unpack(path) for path in FONTS}
     text = sarc_members(archives[icons.TEXT_ARCHIVE])
@@ -491,5 +519,6 @@ for path, contents in outputs.items():
 (args.out / 'manifest.tsv').write_text('# path\tsize\tsha256\toriginal_sha256 (tools/make_romfs_patches.py)\n'
                                        + ''.join(line + '\n' for line in lines))
 print(json.dumps(dict(status='pass', path=ARCHIVE, members=patched, changed_bytes=len(diff),
+                      over={path: str(file) for path, file in over.items()},
                       ultrawide_layout=dict(aspect=args.aspect, members=len(layout)) if args.aspect else None,
                       prompts=prompts, reused=reused)))
