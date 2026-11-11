@@ -55,9 +55,10 @@ changes is then taken from the mod when it ships one: the same edits are made to
 keeps what the mod changed (a title logo in the Common archive, its texts in a Mals archive) and adds the 60 fps
 keys, the shape's layout and the prompts. totk.exe drops the prompts when a mod replaces one of their files
 (runtime/romfs.c overlay_init), so an overlay made this way goes with a mod folder that no longer holds those files.
-Where the mod already changed a value an edit expects, the edit stops with the pane's name, as for the game's own
-files; the two capture keys are the exception: a mod that moved or removed them keeps its own. The resource size
-table is always the RomFS's own, grown by what each archive gained over the RomFS's.
+Where the mod already changed a value an edit replaces, the mod's value stays: a capture key it moved, and a pane or
+key of the shape's layout (the summary's ultrawide_layout.kept lists those). The prompts' edits still stop on a
+value they do not expect. The resource size table is always the RomFS's own, grown by what each archive gained over
+the RomFS's.
 
 Input: build/extracted/<version>/romfs (romfs.bin and index.json, verified by tools/extract.py). Output:
 build/<version>/romfs-patches/<path> by default (romfs-patches-<style> with --prompts), and <out>/manifest.tsv (path, size, SHA-256 of the overlay, SHA-256 of the original). Run with .venv-py314.
@@ -412,7 +413,8 @@ if args.aspect:
     spec = importlib.util.spec_from_file_location('ultrawide_layout', Path(__file__).with_name('ultrawide_layout.py'))
     ultrawide = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ultrawide)
-    layout = ultrawide.apply(blarc, members, width, height)
+    kept = [] if ARCHIVE in over else None   # layout edits left out where the mod changed the value they replace
+    layout = ultrawide.apply(blarc, members, width, height, kept=kept)
 diff = [i for i in range(len(original)) if original[i] != blarc[i]]
 touched = [members[m] for m in (*MEMBERS, *layout)]
 assert (diff or ARCHIVE in over) and all(any(lo <= i < hi for lo, hi in touched) for i in diff), diff
@@ -520,5 +522,5 @@ for path, contents in outputs.items():
                                        + ''.join(line + '\n' for line in lines))
 print(json.dumps(dict(status='pass', path=ARCHIVE, members=patched, changed_bytes=len(diff),
                       over={path: str(file) for path, file in over.items()},
-                      ultrawide_layout=dict(aspect=args.aspect, members=len(layout)) if args.aspect else None,
+                      ultrawide_layout=dict(aspect=args.aspect, members=len(layout), kept=kept) if args.aspect else None,
                       prompts=prompts, reused=reused)))

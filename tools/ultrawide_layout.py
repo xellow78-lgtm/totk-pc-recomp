@@ -185,8 +185,9 @@ def anim_keys(blarc, lo, pane, tag, target):
         pos += size
     return out
 
-def tall_anim(blarc, members, k, changed):
-    """The animation keys that hold positions or zooms on the screen's height, for a canvas narrower than 16:9."""
+def tall_anim(blarc, members, k, changed, differs):
+    """The animation keys that hold positions or zooms on the screen's height, for a canvas narrower than 16:9.
+    differs(text) is called for keys that are not the game's: it stops the run or returns true, and those keys stay."""
     h = 540 * (1 / k - 1)
     get = lambda at: struct.unpack_from('<f', blarc, at)[0]
     put = lambda at, v: struct.pack_into('<f', blarc, at, v)
@@ -200,22 +201,22 @@ def tall_anim(blarc, members, k, changed):
     lo = anim('AppMap_00_MiniMap')
     for pane in ('N_Cut_00', 'N_Cut_01', 'N_Cut_02', 'N_Cut_03'):
         curves = anim_keys(blarc, lo, pane, b'FLPA', FLPA_Y)
-        if len(curves) != 1 or len(curves[0]) != 2: raise SystemExit(f'AppMap_00_MiniMap {pane}: {len(curves)} y curves')
+        if (len(curves) != 1 or len(curves[0]) != 2) and differs(f'AppMap_00_MiniMap {pane}: {len(curves)} y curves'): continue
         k0, k1 = curves[0]
         if not (get(k0) == 0 and get(k0 + 4) == 0 and abs(get(k0 + 8) + 360) < 1e-3 and get(k1) == 1 and
-                abs(get(k1 + 4) + 360) < 1e-3 and get(k1 + 8) == 0):
-            raise SystemExit(f'AppMap_00_MiniMap {pane}: not a line from 0 to y -360')
+                abs(get(k1 + 4) + 360) < 1e-3 and get(k1 + 8) == 0) and differs(f'AppMap_00_MiniMap {pane}: not a line from 0 to y -360'):
+            continue
         put(k0 + 8, -(360 + h)), put(k1 + 4, -(360 + h))
     # The large place name of a discovery holds its height (285, then 260) in flat keys; they move to the top edge.
     curves = anim_keys(blarc, anim('Location_00_IsDiscovery'), 'N_Large_00', b'FLPA', FLPA_Y)
     values = [get(key + 4) for keys in curves for key in keys]
-    if len(curves) != 1 or values != [285, 285, 260]: raise SystemExit(f'Location_00_IsDiscovery N_Large_00: keys {values}')
-    for key in curves[0]: put(key + 4, get(key + 4) + h)
+    if not ((len(curves) != 1 or values != [285, 285, 260]) and differs(f'Location_00_IsDiscovery N_Large_00: keys {values}')):
+        for key in curves[0]: put(key + 4, get(key + 4) + h)
     # The dragon's tears map icon zooms its picture to 1.08 and 1.28 in flat keys; on the stretched axis by 1 / k more.
     curves = anim_keys(blarc, anim('PaMapIconDragonTears_00_Zoom'), 'P_Geoglyph_00', b'FLTS', FLTS_SY)
     values = [round(get(key + 4), 4) for keys in curves for key in keys]
-    if len(curves) != 1 or values != [1.08, 1.28]: raise SystemExit(f'PaMapIconDragonTears_00_Zoom P_Geoglyph_00: keys {values}')
-    for key in curves[0]: put(key + 4, get(key + 4) / k)
+    if not ((len(curves) != 1 or values != [1.08, 1.28]) and differs(f'PaMapIconDragonTears_00_Zoom P_Geoglyph_00: keys {values}')):
+        for key in curves[0]: put(key + 4, get(key + 4) / k)
 
 def anim_edits(k, hud_corner):
     """(animation, byte offset, value the game ships, new value): floats inside BFLAN key tables."""
@@ -243,10 +244,16 @@ def find_pane(found, layout, name):
     if name not in found: raise SystemExit(f'{layout}: no pane {name}')
     return found[name]
 
-def apply(blarc, members, width, height, hud_corner=True):
+def apply(blarc, members, width, height, hud_corner=True, kept=None):
     """Edits blarc (bytearray) in place for a width x height canvas of another shape than 16:9. Returns the members it
     changed. hud_corner (wider canvases): the HUD goes to the screen's corners; a narrower one always has it at the
-    top and bottom edges."""
+    top and bottom edges. kept: a list, for an archive a mod changed (make_romfs_patches.py --over). An edit whose
+    pane or key no longer holds the value the game ships is then left out, the mod's value stays and the list gets
+    one line about it; without it such a value stops the run."""
+    def differs(what):
+        if kept is None: raise SystemExit(what)
+        kept.append(what)
+        return True
     wide = width / height > 16 / 9
     k = (16 / 9) / (width / height) if wide else (width / height) / (16 / 9)
     assert k < 1, 'only for canvases of another shape than 16:9'
@@ -267,12 +274,12 @@ def apply(blarc, members, width, height, hud_corner=True):
             for pane in ('RootPane',) + MARKER_ROOT[layout]:
                 at = pane_offset(layout, pane) + FIELD[root_scale]
                 have = struct.unpack_from('<f', blarc, at)[0]
-                if abs(abs(have) - 1.0) > 1e-3: raise SystemExit(f'{layout} {pane} {root_scale}: {have}, expected ±1.0')
+                if abs(abs(have) - 1.0) > 1e-3 and differs(f'{layout} {pane} {root_scale}: {have}, expected ±1.0'): continue
                 if pane != 'RootPane': struct.pack_into('<f', blarc, at, k * have)   # mirrored panes stay mirrored
             continue
         at = pane_offset(member[5:-6], 'RootPane') + FIELD[root_scale]
         have = struct.unpack_from('<f', blarc, at)[0]
-        if abs(have - 1.0) > 1e-3: raise SystemExit(f'{member[5:-6]} RootPane {root_scale}: {have}, expected 1.0')
+        if abs(have - 1.0) > 1e-3 and differs(f'{member[5:-6]} RootPane {root_scale}: {have}, expected 1.0'): continue
         struct.pack_into('<f', blarc, at, k)
     # Every edit's value at k = 1 is the value the game ships (a scale of 1, the 16:9 position): checked before writing,
     # so a version with other numbers stops here instead of getting wrong positions. OFF moves a pane away: not checked.
@@ -280,10 +287,11 @@ def apply(blarc, members, width, height, hud_corner=True):
     for (layout, pane, field, value), (_, _, _, shipped) in table:
         at = pane_offset(layout, pane) + FIELD[field]
         have = struct.unpack_from('<f', blarc, at)[0]
-        if value != 10000.0 and abs(have - shipped) > 1e-3: raise SystemExit(f'{layout} {pane} {field}: {have}, expected {shipped}')
+        if value != 10000.0 and abs(have - shipped) > 1e-3 and differs(f'{layout} {pane} {field}: {have}, expected {shipped}'):
+            continue
         struct.pack_into('<f', blarc, at, value)
     if not wide:
-        tall_anim(blarc, members, k, changed)
+        tall_anim(blarc, members, k, changed, differs)
         return sorted(changed)
     for anim, offset, shipped, value in anim_edits(k, hud_corner):
         member = f'anim/{anim}.bflan'
@@ -291,6 +299,6 @@ def apply(blarc, members, width, height, hud_corner=True):
         lo, hi = members[member]
         if offset + 4 > hi - lo: raise SystemExit(f'{anim}: too short for +{offset}')
         have = struct.unpack_from('<f', blarc, lo + offset)[0]
-        if abs(have - shipped) >= 1e-4: raise SystemExit(f'{anim} +{offset}: {have}, expected {shipped}')
+        if abs(have - shipped) >= 1e-4 and differs(f'{anim} +{offset}: {have}, expected {shipped}'): continue
         struct.pack_into('<f', blarc, lo + offset, value); changed.add(member)
     return sorted(changed)
