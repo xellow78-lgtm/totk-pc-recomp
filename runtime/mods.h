@@ -13,8 +13,9 @@ enum { MOD_ROMFS = 1, MOD_EXEFS = 2, MOD_SUBSDK = 4, MOD_CHEATS = 8 };   // ModI
 typedef enum {
     MOD_OK,
     MOD_EMPTY,          // no RomFS file, no ExeFS patch, no cheat file
-    MOD_PLUGIN,         // has code modules (exefs/subsdk*, a replaced exefs/main): the port has no module loader, so the
-                        // whole mod stays off (its RomFS files may expect that code)
+    MOD_PLUGIN,         // has code modules (exefs/subsdk*, a replaced exefs/main) the game was not built with: the
+                        // whole mod stays off (its RomFS files may expect that code). A subsdk the game was built
+                        // with (the same file, plugin.c) is no problem
     MOD_EXEFS_LATER,    // has ExeFS patches for this game's main that the game was built without: the rebuild at the
                         // next start builds them in; the whole mod stays off until then
     MOD_EXEFS_UNSUPPORTED,   // an ExeFS patch file the port cannot apply (note says why): the whole mod stays off
@@ -79,5 +80,7 @@ void mods_rescan(void);
 // The ExeFS patch files of the enabled mods that the build lacks, their FNV-1a mixed into *key (cheats.c starts the
 // rebuild for them).
 int mods_exefs_pending(uint32_t *key);
+// 1 when a switched-on, usable mod carries the code module `module` (subsdk1..9) the game was built with (plugin.c).
+int mods_plugin_on(const char *module);
 // The hex of the game main's build id (64 digits), "" when exefs/main cannot be read.
 const char *mods_main_build_id(void);

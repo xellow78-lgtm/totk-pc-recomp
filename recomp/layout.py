@@ -8,6 +8,11 @@ build read.
 Modules are placed in Horizon's load order (rtld is dropped; the host links the modules):
 main, subsdk0..9, sdk. Each base is aligned to 2 MiB. Everything must stay below 2^39, the limit of the addresses
 IPC buffers can encode.
+
+A subsdk the game does not ship is a mod's plugin (TotK ships main, subsdk0 and sdk). Plugins go after sdk, in the
+order of their numbers, so the game's modules keep their bases, and with them the names of their lifted functions,
+whether a plugin is built in or not: adding one leaves the generated C of the game's modules as it was, apart from the
+hook points (recomp/patches.py).
 """
 import json
 from pathlib import Path
@@ -17,7 +22,9 @@ from nso import Nso
 FIRST_BASE = 0x7000000000
 ALIGN = 0x200000
 ADDRESS_LIMIT = 1 << 39
-ORDER = ['main'] + [f'subsdk{i}' for i in range(10)] + ['sdk']
+GAME = ('main', 'subsdk0', 'sdk')
+ORDER = list(GAME) + [f'subsdk{i}' for i in range(1, 10)]
+PLUGINS = tuple(ORDER[len(GAME):])
 
 
 def align_up(v, a=ALIGN):

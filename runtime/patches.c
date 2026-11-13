@@ -27,6 +27,41 @@
 
 uint8_t rt_patch_on[RT_PATCH_COUNT > 0 ? RT_PATCH_COUNT : 1];   // read by the generated C at every patched site
 
+// The hook points of a mod's plugin (recomp/patches.py `hook`, `inline`, `installer`), for plugin.c, which is part of
+// the runtime library and so cannot see patches.h. The generated C reads rt_hook_target[n] at the entry of hook point
+// n (0: nothing hooked) and rt_inline_on[n] before the instruction of inline point n; plugin.c writes both.
+// rt_hook_orig[n] is the function's body without that check. A build without hook points has empty tables.
+#ifndef RT_HOOK_COUNT
+#define RT_HOOK_COUNT 0
+#define RT_INLINE_COUNT 0
+#define RT_HOOKS(X)
+#define RT_INLINES(X)
+#define RT_HOOK_INSTALLER -1
+#define RT_INLINE_INSTALLER -1
+#endif
+#define X(i, addr, fn, orig) void orig(Cpu *c);
+RT_HOOKS(X)
+#undef X
+uint64_t rt_hook_target[RT_HOOK_COUNT + 1];
+uint8_t rt_inline_on[RT_INLINE_COUNT + 1];
+const uint64_t rt_hook_addr[RT_HOOK_COUNT + 1] = {
+#define X(i, addr, fn, orig) addr,
+    RT_HOOKS(X)
+#undef X
+};
+const GuestFn rt_hook_orig[RT_HOOK_COUNT + 1] = {
+#define X(i, addr, fn, orig) orig,
+    RT_HOOKS(X)
+#undef X
+};
+const uint64_t rt_inline_addr[RT_INLINE_COUNT + 1] = {
+#define X(i, addr) addr,
+    RT_INLINES(X)
+#undef X
+};
+const int rt_hook_count = RT_HOOK_COUNT, rt_inline_count = RT_INLINE_COUNT;
+const int rt_hook_installer = RT_HOOK_INSTALLER, rt_inline_installer = RT_INLINE_INSTALLER;
+
 #if RT_PATCH_COUNT
 static const struct { const char *name, *env; int on; } sets[] = {
 #define X(i, n, e, d) {#n, e, d},

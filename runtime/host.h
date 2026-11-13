@@ -147,6 +147,7 @@ uint32_t mem_set_attribute(uint64_t a, uint64_t n, uint32_t mask, uint32_t at); 
 uint32_t mem_map(uint64_t dst, uint64_t src, uint64_t n);                       // 0x04
 uint32_t mem_unmap(uint64_t dst, uint64_t src, uint64_t n);                     // 0x05
 uint32_t mem_query(uint64_t a, RtMemoryInfo *out);                              // 0x06
+uint32_t svc_query_memory(uint64_t a, RtMemoryInfo *out);                       // 0x06 as the game gets it (svc.c)
 uint32_t mem_map_physical(uint64_t a, uint64_t n);                              // 0x2C
 uint32_t mem_unmap_physical(uint64_t a, uint64_t n);                            // 0x2D
 int mem_info(uint32_t id, uint64_t *out);                  // GetInfo memory ids 2-7, 12-17, 21, 22, 28; 0 if not a memory id
@@ -199,7 +200,16 @@ typedef struct {
 } RtLoaded;
 void ldr_load(const char *exefs_dir);                      // load, relocate (overrides applied), seal; once
 int ldr_count(void);
-const RtLoaded *ldr_module(int i);                         // order: main, subsdk0, sdk
+const RtLoaded *ldr_module(int i);                         // order: main, subsdk0, sdk, then a mod's plugins
+#define RT_MOD_MAX 12                                      // the game's three modules and subsdk1..9 (recomp/layout.py)
+int ldr_is_plugin(int i);                                  // module i is a mod's plugin (plugin.c), not the game's
+
+// ---- a mod's plugin (plugin.c): a subsdk module of a mod, lifted with the game
+void plugin_init(void);                                    // after ldr_load, before hostfn_seal
+void plugin_start(Cpu *c);                                 // the plugins' DT_INIT, after the game's module constructors
+int plugin_svc(Cpu *c, uint32_t imm, uint64_t pc);         // 1: an SVC made inside a plugin, answered
+uint64_t plugin_data_symbol(const char *name);             // a data symbol of the console's dynamic linker, 0 if none
+void plugin_exit_report(void);                             // before the process ends: what the plugins did, to the log
 uint64_t ldr_symbol(const char *name);                     // exported definition, 0 if none
 uint64_t ldr_plt_stub(const char *module, const char *name); // PLT stub whose GOT slot holds name, 0 if none
 const char *ldr_describe(uint64_t a, char *buf, int n);    // "main+0x1234 (symbol+0x10)", "host <name>", or the address

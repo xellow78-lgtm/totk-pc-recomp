@@ -8,6 +8,10 @@ Lifted code cannot be byte-patched when the game runs, so a patch is applied whe
 
   spin <module> <head> <back-edge> [<back-edge> ...]
 
+  hook   <module> <address> <original>      a function whose entry a mod's plugin may take over
+  inline <module> <address> <original>      an instruction a mod's plugin may run its own code before
+  installer <module> <hook|inline> <address> <original>
+
 <address> is a module offset (hex), <original> the instruction word the module has there (checked; a mismatch stops
 the generator), each <replacement> an instruction word (hex) or `@page:x<n>`, which is `adrp x<n>, <patch page>`
 encoded for the site's address. The patch page is the first 4 KiB page after main's image (layout.py leaves the rest
@@ -24,6 +28,19 @@ first set in file order wins. The original may be any instruction but br, blr an
 a bl (lifted with the site's return address), a b or b.cond / cbz / tbz (its target joins the function's labels when
 inside it) or a ret; earlier words must not branch. Every alternative of a site writes the same flags. The generator
 writes patches.h (set names, switches, the page address) next to layout.h for the runtime.
+
+The `hook`, `inline` and `installer` lines serve a mod's plugin: a subsdk module of Switch code that, on the
+console, rewrites the game's code in memory when it starts (an exlaunch plugin replaces a function's first instruction
+with a branch to its own function, and keeps a copy of that instruction, the "trampoline", to call the original). The
+plugin is lifted like the game's modules, and what it would have rewritten is built in here:
+`hook` makes the function at <address> (checked: a function start) enter through `rt_hook_target[n]`: while the
+runtime has stored a guest address there, a call of the function goes to that address, and the original body stays
+reachable as f_<address>_orig (runtime/plugin.c hands it to the plugin as the trampoline). `inline` makes the
+instruction at <address> call rt_inline_hook(c, n) first while rt_inline_on[n] is set: the runtime passes the
+registers to the plugin's function and takes them back. `installer` names the plugin's own functions that install such
+hooks on the console; it is a `hook` on them, which the runtime fills with its own function (it records the request
+instead of writing code). n counts the lines of each kind in file order; patches.h lists them for the runtime.
+A build without these lines has no hooks and its generated C is unchanged.
 
 A `spin` line names a spin wait found by tools/spin_waits.py: a loop with head <head> that only another thread can end,
 and the direct branches back to it (module offsets). Each back-edge (checked: a b, b.cond, cbz / cbnz or tbz / tbnz to
@@ -51,11 +68,22 @@ class Table:
     """sets: [(name, env, default)]; sites: {module: {offset: [(set index, [word | ('page', reg)], original)]}} (the
     alternatives of a site in file order); page."""
 
-    def __init__(self, sets=(), sites=None, page=0, spins=None):
+    def __init__(self, sets=(), sites=None, page=0, spins=None, hooks=(), inlines=(), installers=None):
         self.sets = list(sets)
         self.sites = sites or {}
         self.page = page
         self.spins = spins or {}   # {module: {back-edge offset: head offset}}
+        self.hooks = list(hooks)       # [(module, offset, original word)] in file order: index n of rt_hook_target
+        self.inlines = list(inlines)   # [(module, offset, original word)] in file order: index n of rt_inline_on
+        self.installers = installers or {}   # {'hook' | 'inline': index into hooks}
+
+    def hooks_for(self, name, base):
+        """{absolute function start: hook index}."""
+        return {base + off: n for n, (mod, off, _) in enumerate(self.hooks) if mod == name}
+
+    def inlines_for(self, name, base):
+        """{absolute instruction address: inline hook index}."""
+        return {base + off: n for n, (mod, off, _) in enumerate(self.inlines) if mod == name}
 
     def spins_for(self, name, base):
         """{absolute back-edge address: absolute head address}."""
@@ -74,6 +102,17 @@ class Table:
 def load(path, mods):
     """Table from a patch file; mods is layout() output [(name, base, size)]."""
     sets, index, sites, spins = [], {}, {}, {}
+    hooks, inlines, installers = [], [], {}
+
+    def point(kind, mod, addr, orig):
+        """Adds a hook or inline line; returns its index."""
+        if mod not in bases:
+            raise PatchError(f'{where}: module {mod} not in the layout')
+        lst, key = (hooks if kind == 'hook' else inlines), (mod, int(addr, 16))
+        if any((m, o) == key for m, o, _ in lst):
+            raise PatchError(f'{where}: {mod}+{key[1]:#x} is a {kind} point twice')
+        lst.append((mod, key[1], int(orig, 16)))
+        return len(lst) - 1
     bases = {n: (b, s) for n, b, s in mods}
     for no, raw in enumerate(Path(path).read_text().splitlines(), 1):
         f = raw.split('#', 1)[0].split()
@@ -103,6 +142,12 @@ def load(path, mods):
             if alts and alts[0][2] != orig:
                 raise PatchError(f'{where}: {f[2]}+{off:#x} expects {orig:08x}, an earlier line {alts[0][2]:08x}')
             alts.append((index[f[1]], repl, orig))
+        elif f[0] in ('hook', 'inline') and len(f) == 4:
+            point(f[0], f[1], f[2], f[3])
+        elif f[0] == 'installer' and len(f) == 5 and f[2] in ('hook', 'inline'):
+            if f[2] in installers:
+                raise PatchError(f'{where}: a second {f[2]} installer')
+            installers[f[2]] = point('hook', f[1], f[3], f[4])
         elif f[0] == 'spin' and len(f) >= 4:
             if f[1] not in bases:
                 raise PatchError(f'{where}: module {f[1]} not in the layout')
@@ -119,11 +164,22 @@ def load(path, mods):
     nxt = min((b for _, b, _ in mods if b > base), default=None)
     if nxt is not None and page + PAGE > nxt:
         raise PatchError(f'no room for the patch page after main ({page:#x})')
-    return Table(sets, sites, page, spins)
+    return Table(sets, sites, page, spins, hooks, inlines, installers)
 
 
 def check(table, mod, name):
     """Stops on a site whose original word differs from the module's."""
+    for kind, lst in (('hook', table.hooks), ('inline', table.inlines)):
+        for m, off, want in lst:
+            if m != name:
+                continue
+            a = mod.base + off
+            if not mod.in_text(a):
+                raise PatchError(f'{name}+{off:#x}: {kind} point outside .text')
+            if mod.word(a) != want:
+                raise PatchError(f'{name}+{off:#x}: module has {mod.word(a):08x}, the {kind} line expects {want:08x}')
+            if kind == 'inline' and (off in table.sites.get(name, {}) or off in table.spins.get(name, {})):
+                raise PatchError(f'{name}+{off:#x}: an inline point on a patched site or a spin wait back-edge')
     for off, [(_, _, want), *_] in table.sites.get(name, {}).items():
         a = mod.base + off
         if not mod.in_text(a):
@@ -148,11 +204,25 @@ def branch_target(w, a):
     return None
 
 
-def header_text(table, marker):
+def header_text(table, marker, mods=()):
+    """patches.h. mods: layout() output, for the absolute addresses of the hook and inline points."""
     lines = [f'// {marker}: code patch sets, generated by recomp/gen.py --patches. Do not edit or commit.',
              '#pragma once', '', f'#define RT_PATCH_COUNT {len(table.sets)}',
              f'#define RT_PATCH_PAGE {table.page:#x}ull',
              '// X(index, name, env switch, default)',
              '#define RT_PATCH_SETS(X) ' + ' '.join(f'X({i}, {n}, "{e}", {d})' for i, (n, e, d) in
                                                     enumerate(table.sets)), '']
+    if table.hooks or table.inlines:
+        base = {n: b for n, b, _ in mods}
+        lines += ['// A mod plugin\'s hook points (recomp/patches.py `hook`, `inline`, `installer`; runtime/plugin.c).',
+                  f'#define RT_HOOK_COUNT {len(table.hooks)}',
+                  '// X(index, guest address, the function, the function without its hook check)',
+                  '#define RT_HOOKS(X) ' + ' '.join(f'X({i}, {base[m] + o:#x}ull, f_{base[m] + o:x}, f_{base[m] + o:x}_orig)'
+                                                    for i, (m, o, _) in enumerate(table.hooks)),
+                  f'#define RT_INLINE_COUNT {len(table.inlines)}',
+                  '// X(index, guest address)',
+                  '#define RT_INLINES(X) ' + ' '.join(f'X({i}, {base[m] + o:#x}ull)'
+                                                      for i, (m, o, _) in enumerate(table.inlines)),
+                  f'#define RT_HOOK_INSTALLER {table.installers.get("hook", -1)}',
+                  f'#define RT_INLINE_INSTALLER {table.installers.get("inline", -1)}', '']
     return '\n'.join(lines)

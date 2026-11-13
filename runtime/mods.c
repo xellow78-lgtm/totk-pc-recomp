@@ -25,6 +25,7 @@
 #include <strings.h>
 
 #include "cfg.h"
+#include "dispatch.h"
 #include "host.h"
 #include "mods.h"
 #include "platform/platform.h"
@@ -127,7 +128,7 @@ static int by_order(const void *a, const void *b) {
 static const char *problem_name(ModProblem p) {
     switch (p) {
     case MOD_EMPTY: return "empty";
-    case MOD_PLUGIN: return "has a code module (subsdk or main), not supported; the whole mod stays off";
+    case MOD_PLUGIN: return "has a code module (subsdk or main) the game was not built with; the whole mod stays off";
     case MOD_EXEFS_LATER: return "ExeFS patches wait for a rebuild of the game code; the whole mod stays off";
     case MOD_EXEFS_UNSUPPORTED: return "an ExeFS patch file cannot be applied; the whole mod stays off";
     case MOD_EXEFS_OTHER: return "its ExeFS patches are for another game version";
@@ -301,6 +302,58 @@ static int exefs_patches_cb(const char *leaf, int kind, uint64_t size, void *ctx
     return 1;
 }
 
+// ---- plugins: a mod's code modules the game was built with (plugin.c)
+
+// 1 when the file at path is the code module `name` the game was built with: a module of the layout that is not the
+// game's own (tools/build_game.py records its SHA-256 next to the game's in modules.c), with the same content.
+static int built_in(const char *name, const char *path) {
+    if (!strcmp(name, "main") || !strcmp(name, "subsdk0") || !strcmp(name, "sdk")) return 0;
+    const char *want = NULL;
+    for (int i = 0; i < rt_layout_count; i++)
+        if (!strcmp(rt_layout[i].name, name))
+            for (int k = 0; k < rt_exefs_sha256_count; k++)
+                if (!strcmp(rt_exefs_sha256[k].file, name)) want = rt_exefs_sha256[k].sha256;
+    if (!want) return 0;
+    uint64_t size = 0;
+    uint8_t *p = plat_file_read(path, &size), d[32];
+    if (!p) return 0;
+    rt_sha256(p, (size_t)size, d);
+    free(p);
+    char hex[65];
+    for (int i = 0; i < 32; i++) snprintf(hex + 2 * i, 3, "%02x", d[i]);
+    return !strcmp(hex, want);
+}
+
+typedef struct { const char *exefs; int modules, other; } PluginWalk;
+static int plugin_cb(const char *name, int kind, uint64_t size, void *ctx) {
+    (void)size;
+    PluginWalk *w = ctx;
+    if (kind != PLAT_FS_FILE || (strncasecmp(name, "subsdk", 6) && strcasecmp(name, "main"))) return 1;
+    char path[2200];
+    w->modules++;
+    if (snprintf(path, sizeof path, "%s/%s", w->exefs, name) >= (int)sizeof path || !built_in(name, path)) w->other++;
+    return 1;
+}
+
+// 1 when every code module of mod m is one the game was built with.
+static int plugins_built_in(const ModInfo *m) {
+    PluginWalk w = {m->exefs, 0, 0};
+    if (m->exefs[0]) plat_fs_list(m->exefs, plugin_cb, &w);
+    return w.modules && !w.other;
+}
+
+int mods_plugin_on(const char *module) {
+    mods_scan();
+    for (int i = 0; i < nmods; i++) {
+        const ModInfo *m = &mods[i];
+        char path[2200];
+        if (m->enabled && m->problem == MOD_OK && (m->kind & MOD_SUBSDK) &&
+            snprintf(path, sizeof path, "%s/%s", m->exefs, module) < (int)sizeof path && built_in(module, path))
+            return 1;
+    }
+    return 0;
+}
+
 // The ExeFS patch files of mod m (folder path): 1 when one cannot be applied.
 static int exefs_check(ModInfo *m, const char *path) {
     ExefsWalk w = {m, m->exefs, m->exefs + strlen(path) + 1, 0};
@@ -339,7 +392,7 @@ static int scan_cb(const char *name, int kind, uint64_t size, void *ctx) {
     int unsupported = exefs_check(m, path);
     // a mod whose code part the port cannot use is off as a whole: its RomFS files may expect that code
     m->problem = strchr(m->name, '|')                                       ? MOD_BAD_NAME
-               : m->kind & MOD_SUBSDK                                       ? MOD_PLUGIN
+               : m->kind & MOD_SUBSDK && !plugins_built_in(m)               ? MOD_PLUGIN
                : unsupported                                                ? MOD_EXEFS_UNSUPPORTED
                : m->pending                                                 ? MOD_EXEFS_LATER
                : m->nsets || m->ndata || m->kind & (MOD_ROMFS | MOD_CHEATS) ? MOD_OK

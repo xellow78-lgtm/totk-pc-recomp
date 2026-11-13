@@ -190,6 +190,7 @@ DEFAULT_DEPS = ROOT / 'toolchain' / 'deps-mingw'
 # functions sit on it). mouse_direct.c also registers host callbacks relative to that version's patch page.
 INSTALL_SIDE = {'romfs.c', 'patches.c', 'ov_zstd.c', 'mouse_direct.c'}
 LIB_NAME = 'libtotkrt.a'
+PLUGIN_MODULES = tuple(f'subsdk{i}' for i in range(1, 10))   # a mod's plugins, as recomp/layout.py PLUGINS
 AR = UCRT / 'llvm-ar.exe' if WIN else on_path('llvm-ar')
 WINDRES = UCRT / 'windres.exe'   # runtime/totk.rc: the manifest of totk.exe
 TOOLCHAIN_BIN = None   # llvm-mingw bin directory, set by main() for --toolchain
@@ -904,6 +905,13 @@ def main():
     cpus = os.cpu_count() or 1
     budget = min(MEM_BUDGET, int(total_ram() * 0.8))
     jobs = args.jobs or max(1, min(cpus, budget // JOB_MEM))
+    # A mod's plugin (a module of the layout that is not the game's: recomp/layout.py PLUGINS) has no expected hash:
+    # the loader checks it against the file the game is built with here.
+    for n in names:
+        if n in PLUGIN_MODULES and n not in hashes:
+            if not (paths['exefs'] / n).is_file():
+                sys.exit(f'{paths["exefs"] / n} not found: the generated code has the plugin module {n}')
+            hashes = {**hashes, n: file_sha256(paths['exefs'] / n)}
     missing = [n for n in names if n not in hashes]
     if missing:
         sys.exit(f'{expected}: no exefs_sha256 for {missing}')

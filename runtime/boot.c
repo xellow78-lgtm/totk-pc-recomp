@@ -91,6 +91,7 @@ static void cb_module_inits(Cpu *c) {
                      (unsigned long long)expected_inits[k].entries);
     }
     plat_xchg32(&inits_done, 1);
+    plugin_start(c);   // a mod's plugins, where the console's dynamic linker runs them
 }
 
 static void cb_module_finis(Cpu *c) {
@@ -116,7 +117,7 @@ void rt_boot_event(const char *what, Cpu *c, const char *detail) {
                      (unsigned long long)CHECKPOINT_RET);
         if (!plat_cas32(&inits_done, 0, 0)) rt_fatal("boot: checkpoint %s before DT_INIT", detail);
         for (int i = 0; i < ldr_count(); i++)
-            if (ctor_state(ldr_module(i)) != CTOR_DONE)
+            if (!ldr_is_plugin(i) && ctor_state(ldr_module(i)) != CTOR_DONE)
                 rt_fatal("boot: checkpoint %s: %s constructor flag reads %u", detail, ldr_module(i)->name,
                          ctor_state(ldr_module(i)));
         plat_xchg32(&checkpoint_seen, 1);
@@ -308,6 +309,7 @@ void rt_frame_presented(const tex_t *t, uint64_t n) {
     fs_save_flush();
     vk_pipeline_save();   // no-op without the Vulkan back end
     playtime_save();
+    plugin_exit_report();
     prof_write();
     fflush(stderr);
     plat_exit(0);
@@ -345,6 +347,7 @@ void rt_boot(void) {
     PlatThread *warm = plat_thread_new(prewarm_main, NULL, "prewarm");
     ldr_load(rt_config()->exefs);
     rt_patches_init();
+    plugin_init();
     mods_exefs_switch();   // after the patch sets' settings: an enabled mod's ExeFS patches on
     frame_step_init();
     res_init();

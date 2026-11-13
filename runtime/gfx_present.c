@@ -85,6 +85,7 @@ void gfx_window_closed(void) {
     fs_save_flush();
     vk_pipeline_save();
     playtime_save();
+    plugin_exit_report();
     prof_write();   // plat_exit runs no atexit handlers
     if (restart) {
         plat_setenv("TOTK_REEXEC", NULL);   // the new process counts its own address-space retries (memory.c)

@@ -113,7 +113,7 @@ keeps its textures at a quarter of the size.
 | This folder has no romfs, exefs or cheats files. | The archive was unpacked one level too deep (`mods\Mod\Mod\romfs`), or it holds no game files. | Move the folders up so `romfs` sits directly in the mod's folder. |
 | ... files carry another game version in their names. | The files are named for another update (`.Product.<number>.`) and the game's own files have no such name. They are still served under those names, as on a console, because the game sometimes asks for one; another update's resource size table is the exception and only lends its entries. | Nothing if the mod works. If it does nothing, download its release for your game update. |
 | Its code patches (exefs) are made for another game version. | The patch files name another update's build id. | Same: get the release for your update. |
-| This mod brings its own game code (a subsdk plugin or a replaced main). | Mods such as UltraCam ship compiled Switch code. The port cannot load it. | No workaround; the whole mod stays off. |
+| This mod brings its own game code (a subsdk plugin or a replaced main) that the game was not built with. | Mods such as UltraCam ship compiled Switch code. The port runs such code only when it was lifted with the game. | A subsdk plugin can be built in by hand, see "Plugins" below; a replaced main cannot. The whole mod stays off otherwise. |
 | This mod patches the game code (exefs) in a way the port cannot apply. | The patch writes the game's data, not its code, or changes code in a form the port cannot build. | No workaround; the reason follows on the row. |
 | The folder name contains \|. | The mod list uses `\|` between names. | Rename the folder. |
 
@@ -127,3 +127,33 @@ A mod never stops the game from starting. Whatever the port cannot use is left o
    (`cheats:`) and the resource size table (`RomFS: resource size table:`). Open log folder on the Advanced tab of
    the menu shows the logs.
 3. When reporting a problem, attach `totk.log` and list your mods with the links you downloaded them from.
+
+## Plugins
+
+A plugin is a mod's `exefs\subsdk1` .. `subsdk9`: Switch code, usually made with exlaunch, that the console loads next
+to the game and that rewrites the game's code in memory when it starts. The port cannot rewrite lifted code, so a
+plugin runs only when it was built into the game: lifted like the game's own modules, with the functions and
+instructions it hooks turned into hook points of the generated code (`recomp/patches.py`, `runtime/plugin.c`).
+
+The setup does not do this. By hand, from a source build:
+
+1. Copy the plugin into the game's ExeFS folder next to `main` (`build\extracted\<ver>\exefs\subsdk7`).
+2. Record its hooks: `python tools\plugin_hooks.py --exefs <that folder> --plugin subsdk7 --hook-installer <offset>
+   --inline-installer <offset> --out hooks.txt` runs the plugin's start-up code under Unicorn and writes one line per
+   hooked function. The two offsets are the plugin's own functions that install hooks, found by reading the plugin;
+   the tool's header says what they look like. `recomp\plugins\` keeps the lines of the plugins this was done for.
+3. Lift and build with the patch file followed by those lines: `gen.py --patches <recomp\patches-<ver>.txt +
+   hooks.txt>`, then `build_game.py`. The game's own modules keep their addresses; only the hooked functions of
+   `main` and the plugin compile again.
+4. Leave the mod in `mods\` as it came (its `exefs\subsdk7` must be the file the game was built with). The plugin
+   starts while that mod is switched on; switched off, the game runs as without it. The environment variable
+   `TOTK_PLUGIN=0` keeps a built-in plugin off whatever the mods say; `1` starts it without a mod folder (tests).
+
+What is known not to carry over: a plugin that patches code in other ways than through its two hook installers (the
+log then has a `plugin:` line that says how many bytes it wrote that reach no code), and hooks a plugin installs for
+functions that have no hook point (a `plugin:` line names each). A plugin for another game version usually switches
+itself off; its own lines in the log, prefixed with the module's name, say so.
+
+Checked so far: the start-up of one plugin (BotW Abilities, `recomp\plugins\botw-abilities-v143.txt`, on 1.4.3), under
+Unicorn and as lifted code against `runtime/plugin.c`. Whether a plugin's effects work in the game depends on every
+game function and NVN call it uses.

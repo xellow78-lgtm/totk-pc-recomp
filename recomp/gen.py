@@ -211,11 +211,15 @@ def partition(est, max_fns, max_bytes, big_fn):
 class Emitter:
     """C for the functions of one module. starts is the set of every function start of the module."""
 
-    def __init__(self, mod, starts, patched=None, reg_locals=regs.LOCALS, callee_saved=True, spins=None):
+    def __init__(self, mod, starts, patched=None, reg_locals=regs.LOCALS, callee_saved=True, spins=None, hooks=None,
+                 inlines=None):
         self.mod = mod
         self.starts = starts
         self.patched = patched or {}   # {address: [(set index, [replacement words])]} (recomp/patches.py)
         self.spins = spins or {}       # {spin wait back-edge: its head} (recomp/patches.py `spin`)
+        self.hooks = hooks or {}       # {function start: index of rt_hook_target} (recomp/patches.py `hook`)
+        self.inlines = inlines or {}   # {instruction: index of rt_inline_on} (recomp/patches.py `inline`)
+        self.uses_hooks = False
         self.reg_locals = reg_locals   # recomp/regs.py: registers per function in C locals
         self.kept = regs.CALLEE_SAVED if callee_saved else frozenset()   # not reloaded after a call
         self.uses_patches = False
@@ -387,6 +391,11 @@ class Emitter:
             self.stats['external_branches'] += 1
             return f'{publish(i)}{spill}c->pc = {hx(t)}; {MUSTTAIL} rt_dispatch(c);'
 
+        # A hook point (recomp/patches.py `hook`): the body is f_<entry>_orig, and f_<entry>, which every caller and
+        # the dispatch table reach, goes to the guest address in rt_hook_target[n] while the runtime keeps one there
+        # (one load and a branch per call otherwise).
+        hook = self.hooks.get(entry)
+        own = fname(entry) if hook is None else f'{fname(entry)}_orig'
         if all_labels:
             # An unresolved computed br re-enters the function through fb_<entry>, which switches on c->pc to any
             # instruction. A goto to a shared dispatch block inside the body instead turns every instruction into
@@ -395,13 +404,13 @@ class Emitter:
             cases = ' '.join(f'case {hx(t)}: goto L_{t:x};' for t in range(entry, end, 4))
             redispatch = f'{MUSTTAIL} {fb}(c);'
             out = [f'static void {fb}(Cpu *c);',
-                   f'void {fname(entry)}(Cpu *c) {{', f'    FN_ENTER({hx(entry)});', f'    c->pc = {hx(entry)};',
+                   f'void {own}(Cpu *c) {{', f'    FN_ENTER({hx(entry)});', f'    c->pc = {hx(entry)};',
                    f'    {redispatch}', '}',
                    f'static void {fb}(Cpu *c) {{', f'    switch (c->pc) {{ {cases} default: break; }}',
                    f'    {MUSTTAIL} rt_dispatch(c);']
         else:
             redispatch = f'{MUSTTAIL} rt_dispatch(c);'
-            out = [f'void {fname(entry)}(Cpu *c) {{', f'    FN_ENTER({hx(entry)});']
+            out = [f'void {own}(Cpu *c) {{', f'    FN_ENTER({hx(entry)});']
             if fp.used:
                 out.append('    ' + fp.decl())
 
@@ -452,6 +461,13 @@ class Emitter:
             if a in labels:
                 emit(None, f'L_{a:x}:;')
             k = ins.kind
+            if a in self.inlines:
+                # An inline point (recomp/patches.py `inline`): the plugin's function runs before this instruction
+                # with every register in the Cpu, and may change any of them.
+                emit(i, f'    if (__builtin_expect(rt_inline_on[{self.inlines[a]}], 0)) {{ {spill}rt_inline_hook(c, '
+                        f'{self.inlines[a]});{reload} }}')
+                self.uses_hooks = True
+                self.stats['inline_points'] += 1
             if a in self.patched:
                 emit(i, patch(i, ins, a))
             elif k == 'op':
@@ -493,7 +509,9 @@ class Emitter:
             for i, line in body:
                 if i is not None:
                     texts[i] += line
-            clean = {i for i, ins in enumerate(insns) if entry + 4 * i not in self.patched
+            # (an inline point reloads before its instruction's own writes, so the instruction is not clean)
+            clean = {i for i, ins in enumerate(insns)
+                     if entry + 4 * i not in self.patched and entry + 4 * i not in self.inlines
                      and (ins.kind in ('bl', 'blr') or (ins.kind == 'op' and regs.RELOAD in texts[i]))}
             rp = regs.plan(texts, succ, clean, self.reg_locals, self.kept)
             if rp.regs:
@@ -504,6 +522,12 @@ class Emitter:
         else:
             out += [line for _, line in body]
         out.append('}')
+        if hook is not None:
+            out += [f'void {fname(entry)}(Cpu *c) {{', f'    uint64_t to = rt_hook_target[{hook}];',
+                    f'    if (__builtin_expect(to != 0, 0)) {{ c->pc = to; {MUSTTAIL} rt_dispatch(c); }}',
+                    f'    {MUSTTAIL} {own}(c);', '}']
+            self.uses_hooks = True
+            self.stats['hook_points'] += 1
         self.stats['functions'] += 1
         self.stats['instructions'] += len(insns)
         return out, refs
@@ -512,7 +536,7 @@ class Emitter:
 def chunk_text(name, number, emitter, fns):
     """C text of one chunk. fns: [(entry, end)]."""
     body, refs = [], set()
-    emitter.uses_patches = False
+    emitter.uses_patches = emitter.uses_hooks = False
     for entry, end in fns:
         lines, r = emitter.function(entry, end)
         body.append('\n'.join(lines))
@@ -521,6 +545,9 @@ def chunk_text(name, number, emitter, fns):
     protos = ''.join(f'void {fname(r)}(Cpu *c);\n' for r in sorted(refs))
     if emitter.uses_patches:
         protos += 'extern uint8_t rt_patch_on[];\n'
+    if emitter.uses_hooks:   # runtime/patches.c and plugin.c
+        protos += ('extern uint64_t rt_hook_target[];\nextern uint8_t rt_inline_on[];\n'
+                   'void rt_inline_hook(Cpu *c, int n);\n')
     return (header(f'{name} chunk {number:04d}') + '#include "cpu.h"\n#include "simd.h"\n\n' + protos + '\n'
             + '\n\n'.join(body) + '\n')
 
@@ -587,7 +614,9 @@ def _emitter(name):
         mod.read = recorded
         e = _W['emitters'][name] = Emitter(mod, set(_W['starts'][name].tolist()),
                                            _W['patches'].for_module(name, base),
-                                           spins=_W['patches'].spins_for(name, base), **_W['opts'])
+                                           spins=_W['patches'].spins_for(name, base),
+                                           hooks=_W['patches'].hooks_for(name, base),
+                                           inlines=_W['patches'].inlines_for(name, base), **_W['opts'])
     return e
 
 
@@ -692,7 +721,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--exefs', type=Path, required=True)
     ap.add_argument('--out', type=Path, required=True)
-    ap.add_argument('--modules', default='main,subsdk0,sdk')
+    ap.add_argument('--modules', help='comma separated (default: every module of the ExeFS folder: the game\'s '
+                                      'main, subsdk0 and sdk, and a mod\'s plugin when one is there)')
     ap.add_argument('--jobs', type=int, help='emit workers (default: by free memory and CPU count)')
     ap.add_argument('--limit', type=int, default=0, help='emit only the first N functions of each module')
     ap.add_argument('--chunk-fns', type=int, default=3000, help='functions per chunk at most')
@@ -712,8 +742,8 @@ def main():
     mods = layout(args.exefs)
     write_layout(mods, args.out)
     table = patches.load(args.patches, mods) if args.patches else patches.Table()
-    write_if_changed(args.out / 'patches.h', patches.header_text(table, GENERATED_MARKER))
-    want = args.modules.split(',')
+    write_if_changed(args.out / 'patches.h', patches.header_text(table, GENERATED_MARKER, mods))
+    want = args.modules.split(',') if args.modules else [n for n, _, _ in mods]
     unknown = set(want) - {n for n, _, _ in mods}
     if unknown:
         raise SystemExit(f'not in {args.exefs}: {", ".join(sorted(unknown))}')
@@ -729,6 +759,10 @@ def main():
         starts, dstats = discover(mod)
         est = estimate_sizes(mod, starts)
         abs_starts = mod.lo + starts * 4
+        not_starts = sorted(set(table.hooks_for(name, base)) - set(abs_starts.tolist()))
+        if not_starts:
+            raise SystemExit(f'{name}: hook point(s) that are no function start: '
+                             + ', '.join(f'{name}+{a - base:#x}' for a in not_starts))
         n = len(starts) if not args.limit else min(args.limit, len(starts))
         ends = np.append(abs_starts[1:], mod.hi)
         chunks = partition(est[:n], args.chunk_fns, args.chunk_bytes, args.big_fn)
@@ -813,6 +847,8 @@ def main():
                 'br_dispatch': stats['br_dispatch'],
                 'traps': stats['traps'],
                 'patched_sites': stats['patched_sites'],
+                'hook_points': stats['hook_points'],
+                'inline_points': stats['inline_points'],
                 'local_flag_functions': stats['local_flag_functions'],
                 'flag_reads_direct': stats['flag_reads_direct'],
                 'flag_reads_packed': stats['flag_reads_packed'],

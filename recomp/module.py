@@ -12,6 +12,8 @@ import numpy as np
 from lifter import Insn, Lifter, Unsupported, hx
 from nso import Nso, R_AARCH64_RELATIVE
 
+DT_INIT, DT_FINI = 12, 13
+
 LIFT_CACHE = 1 << 16  # lifted instructions kept per module; analyses revisit nearby addresses only
 
 
@@ -103,8 +105,13 @@ class Module:
         return starts
 
     def seeds(self):
-        """Known function starts: .eh_frame_hdr, exported FUNC symbols, R_AARCH64_RELATIVE targets in .text."""
+        """Known function starts: .eh_frame_hdr, exported FUNC symbols, R_AARCH64_RELATIVE targets in .text, and the
+        module's DT_INIT and DT_FINI (in a mod's plugin, built without unwind tables, only the dynamic section names
+        them; the game's modules list theirs in .eh_frame_hdr)."""
         starts = set(self.eh_frame_functions())
+        for tag in (DT_INIT, DT_FINI):
+            if self.nso.dyn.get(tag):
+                starts.add(self.base + self.nso.dyn[tag])
         for _, info, shndx, value, _ in self.nso.syms:
             if shndx and (info & 0xF) == 2:
                 starts.add(self.base + value)

@@ -81,6 +81,13 @@ static void main_stack_query(uint64_t a, RtMemoryInfo *r) {
     r->size = hi - lo;
 }
 
+// What QueryMemory answers the game for address a (plugin.c starts from it too).
+uint32_t svc_query_memory(uint64_t a, RtMemoryInfo *mi) {
+    uint32_t r = mem_query(a, mi);
+    main_stack_query(a, mi);
+    return r;
+}
+
 static int on_main_stack(uint64_t a, uint64_t n) {
     uint64_t mb, ms;
     kern_main_stack(&mb, &ms);
@@ -157,6 +164,7 @@ static void svc_body(Cpu *c, uint32_t imm, uint64_t pc) {
                (unsigned long long)c->x[0], (unsigned long long)c->x[1], (unsigned long long)c->x[2],
                (unsigned long long)c->x[3]);
     }
+    if (plugin_svc(c, imm, pc)) return;   // a mod's plugin sees its process as Horizon shows it (plugin.c)
     if (kern_svc(c, imm)) return;
     uint64_t *x = c->x;
     switch (imm) {
@@ -178,8 +186,7 @@ static void svc_body(Cpu *c, uint32_t imm, uint64_t pc) {
     case 0x05: x[0] = mem_unmap(x[0], x[1], x[2]); return;
     case 0x06: {   // QueryMemory(x0 MemoryInfo*, x2 address -> w1 page info)
         RtMemoryInfo mi;
-        uint32_t r = mem_query(x[2], &mi);
-        main_stack_query(x[2], &mi);
+        uint32_t r = svc_query_memory(x[2], &mi);
         if (!r && x[0]) memcpy((void *)(uintptr_t)x[0], &mi, sizeof mi);
         x[0] = r;
         x[1] = 0;
@@ -217,6 +224,7 @@ static void svc_body(Cpu *c, uint32_t imm, uint64_t pc) {
         fs_save_flush();
         vk_pipeline_save();
         playtime_save();
+        plugin_exit_report();
         prof_write();
         fflush(NULL);
         if (svc_test_exit_hook) return svc_test_exit_hook(0);

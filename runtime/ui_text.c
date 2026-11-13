@@ -243,8 +243,8 @@ static const char *const text_en[UI_TEXT_COUNT] = {
                                "down. When two mods change the same file, the higher one wins. Changes apply after a "
                                "restart.",
     [UI_MENU_MODS_EMPTY] = "This folder has no romfs, exefs or cheats files.",
-    [UI_MENU_MODS_SUBSDK] = "This mod brings its own game code (a subsdk plugin or a replaced main). The port cannot "
-                            "load code modules, so the whole mod stays off.",
+    [UI_MENU_MODS_SUBSDK] = "This mod brings its own game code (a subsdk plugin or a replaced main) that the game "
+                            "was not built with, so the whole mod stays off.",
     [UI_MENU_MODS_EXEFS_LATER] = "This mod patches the game code (exefs). The game builds the patches in when it "
                                  "starts next (a rebuild of a few minutes); until then the whole mod stays off.",
     [UI_MENU_MODS_CHEATS] = "Cheats: %d. Switch them on the Cheats tab.",
@@ -757,8 +757,8 @@ static const char *const text_ru[UI_TEXT_COUNT] = {
     [UI_MENU_MODS_MOVE_HINT] = "Верхняя кнопка или Ctrl+Вверх поднимает мод, левая кнопка или Ctrl+Вниз опускает. Если "
                                "два мода меняют один файл, побеждает верхний. Изменения действуют после перезапуска.",
     [UI_MENU_MODS_EMPTY] = "В этой папке нет файлов romfs, exefs или cheats.",
-    [UI_MENU_MODS_SUBSDK] = "Этот мод приносит свой код игры (плагин subsdk или заменённый main). Порт не загружает "
-                            "модули кода, поэтому мод выключен целиком.",
+    [UI_MENU_MODS_SUBSDK] = "Этот мод приносит свой код игры (плагин subsdk или заменённый main), с которым игра не "
+                            "собрана, поэтому мод выключен целиком.",
     [UI_MENU_MODS_EXEFS_LATER] = "Этот мод меняет код игры (exefs). Игра соберёт эти патчи при следующем запуске "
                                  "(пересборка на несколько минут); до тех пор мод выключен целиком.",
     [UI_MENU_MODS_CHEATS] = "Читов: %d. Они включаются на вкладке «Читы».",
@@ -1088,8 +1088,8 @@ static const char *const text_pt_br[UI_TEXT_COUNT] = {
     [UI_MENU_MODS_MOVE_HINT] = "O botão de cima ou Ctrl+Cima sobe o mod, o botão da esquerda ou Ctrl+Baixo desce. "
                                "Quando dois mods mudam o mesmo arquivo, vale o de cima. As mudanças valem após reiniciar.",
     [UI_MENU_MODS_EMPTY] = "Esta pasta não tem arquivos romfs, exefs ou cheats.",
-    [UI_MENU_MODS_SUBSDK] = "Este mod traz código próprio do jogo (um plugin subsdk ou um main substituído). O port não "
-                            "carrega módulos de código, então o mod inteiro fica desligado.",
+    [UI_MENU_MODS_SUBSDK] = "Este mod traz código próprio do jogo (um plugin subsdk ou um main substituído) com o qual o "
+                            "jogo não foi compilado, então o mod inteiro fica desligado.",
     [UI_MENU_MODS_EXEFS_LATER] = "Este mod altera o código do jogo (exefs). O jogo compila esses patches na próxima "
                                  "vez que iniciar (uma recompilação de alguns minutos); até lá o mod inteiro fica "
                                  "desligado.",
@@ -1648,7 +1648,7 @@ static const char *const text_zh_hans[UI_TEXT_COUNT] = {
     [UI_MENU_MODS_MOVE_HINT] = "上方按钮或 Ctrl+上 上移，左侧按钮或 Ctrl+下 下移。两个模组修改同一个文件时，以靠上的为准。"
                                "更改在重启后生效。",
     [UI_MENU_MODS_EMPTY] = "此文件夹中没有 romfs、exefs 或 cheats 文件。",
-    [UI_MENU_MODS_SUBSDK] = "此模组带有自己的游戏代码（subsdk 插件或替换的 main）。移植版无法加载代码模块，因此整个模组保持关闭。",
+    [UI_MENU_MODS_SUBSDK] = "此模组带有自己的游戏代码（subsdk 插件或替换的 main），游戏构建时没有包含它，因此整个模组保持关闭。",
     [UI_MENU_MODS_EXEFS_LATER] = "此模组修改游戏代码（exefs）。游戏会在下次启动时把这些补丁构建进去（重新构建需要几分钟）；在此之前整个模组保持关闭。",
     [UI_MENU_MODS_CHEATS] = "金手指：%d 个。在“金手指”标签页中开关。",
     [UI_MENU_MODS_CHEATS_FILE] = "此游戏版本的金手指在启动时从此模组的 cheats\\%s 读取。",

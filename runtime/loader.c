@@ -47,17 +47,22 @@ typedef struct {
     uint64_t *plt_slot, *plt_stub, nplt;   // PLT stubs sorted by GOT slot (ldr_plt_stub), built on first use
     // statistics
     uint64_t kinds[K_COUNT], sym_import, sym_own;
-    uint32_t imports, import_to[MOD_COUNT], weak_unresolved, strong_unresolved;
+    uint32_t imports, import_to[RT_MOD_MAX], weak_unresolved, strong_unresolved;
     uint32_t init_off;
+    int plugin;                         // a mod's plugin (ldr_is_plugin), not one of the game's modules
 } Mod;
 
-static Mod mods[MOD_COUNT];
+static Mod mods[RT_MOD_MAX];
 static int nmods;
 static uint64_t identity_refs, stubs;
 static int *ovr_used, *obs_used;   // per linked table entry, plus probe overrides counted separately
 static PlatMutex plt_lock = PLAT_MUTEX_INIT;
 
 int ldr_count(void) { return nmods; }
+
+// The game ships main, subsdk0 and sdk (recomp/layout.py GAME); any other module of the layout is a mod's plugin.
+static int plugin_name(const char *name) { return strcmp(name, "main") && strcmp(name, "subsdk0") && strcmp(name, "sdk"); }
+int ldr_is_plugin(int i) { return i >= 0 && i < nmods && mods[i].plugin; }
 const RtLoaded *ldr_module(int i) { return i >= 0 && i < nmods ? &mods[i].pub : NULL; }
 
 static uint32_t rd32(uint64_t a) { return LD32(a); }
@@ -174,9 +179,12 @@ static uint64_t module_symbol(const Mod *m, const char *name) {
     return 0;
 }
 
-// The defined symbol in load order (main, subsdk0, sdk); *which is its module index.
+// The defined symbol in load order (main, subsdk0, sdk); *which is its module index. A plugin's definitions are for
+// the plugin alone (resolve binds them first): a plugin exports its own copies of C library functions (snprintf), and
+// nothing of the game may come to depend on a mod.
 static uint64_t find_symbol(const char *name, int *which) {
     for (int i = 0; i < nmods; i++) {
+        if (mods[i].plugin) continue;
         uint64_t a = module_symbol(&mods[i], name);
         if (a) {
             if (which) *which = i;
@@ -291,6 +299,7 @@ static void load_module(Mod *m, const char *dir, const RtLayoutEntry *lay) {
     }
     free(raw);
     m->pub.name = lay->name;
+    m->plugin = plugin_name(lay->name);
     m->pub.base = lay->base;
     m->pub.size = size;
     m->pub.text_end = seg[0].mem_off + seg[0].size;
@@ -336,6 +345,8 @@ static Res resolve(Mod *m, uint32_t si, int jump) {
         mark_used(0, name);
     } else if (guest) {
         r = (Res){guest, RES_GUEST};
+    } else if (m->plugin && (guest = plugin_data_symbol(name))) {
+        r = (Res){guest, RES_GUEST};   // an object of the console's dynamic linker that plugin.c stands in for
     } else if ((m->syms[si].info >> 4) == STB_WEAK) {
         r = (Res){0, RES_WEAK};
     } else {
@@ -444,7 +455,7 @@ static void seal(Mod *m) {
 void ldr_load(const char *exefs_dir) {
     if (nmods) rt_fatal("ldr_load called twice");
     if (!mem_layout()->pool) rt_fatal("ldr_load before mem_init");
-    if (rt_layout_count > MOD_COUNT) rt_fatal("loader: %d modules in the layout", rt_layout_count);
+    if (rt_layout_count > RT_MOD_MAX) rt_fatal("loader: %d modules in the layout", rt_layout_count);
     for (int i = 0; i < rt_layout_count; i++) load_module(&mods[i], exefs_dir, &rt_layout[i]);
     nmods = rt_layout_count;
     ovr_used = calloc(hostfn_table_size(0) + 1, sizeof(int));
@@ -557,7 +568,7 @@ uint64_t ldr_plt_stub(const char *module, const char *name) {
 typedef struct {
     const char *name;
     uint64_t kinds[K_COUNT], total, sym_import, sym_own;
-    uint32_t imports, to[MOD_COUNT], weak, init_off, init_array;
+    uint32_t imports, to[RT_MOD_MAX], weak, init_off, init_array;
 } Expect;
 static const Expect expect_121[] = {
     {"main", {508816, 1415, 32, 641}, 510904, 2088, 0, 675, {0, 16, 647}, 12, 0x30, 10673},
