@@ -85,7 +85,9 @@ class Module:
         img, hdr = self.image, self.nso.eh_start
         if not hdr or hdr >= len(img):
             return []
-        _, ptr_enc, cnt_enc, tbl_enc = img[hdr:hdr + 4]
+        version, ptr_enc, cnt_enc, tbl_enc = img[hdr:hdr + 4]
+        if version != 1 or tbl_enc == 0xFF:
+            return []   # no search table: a mod's plugin built without unwind tables points MOD0 at an empty section
         off = hdr + 4
         _, sz = _read_encoded(img, off, ptr_enc, hdr)
         off += sz
