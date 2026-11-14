@@ -471,6 +471,17 @@ NVN_API(nvnQueueFenceSync) {
     s->fenced = 1;
     s->fence = nvn_fence_last();
 }
+// void nvnCommandBufferFenceSync(NVNcommandBuffer *cb, NVNsync *s, NVNsyncCondition condition, NVNboolean flush):
+// the sync signals once the GPU has run what the command buffer holds up to here. Those commands reach the GPU with
+// the queue's next submit, so the sync takes that submit's fence value, one past the newest. TotK itself never calls
+// this; a mod's plugin does (plugin.c), to learn with a poll (nvnSyncWait, timeout 0) when the frame it drew two
+// frames ago is done and its buffers are free again. Commands the caller submits later than the next submit would
+// signal early; a plugin that draws into the game's frame has them in the game's one submit of that frame.
+NVN_API(nvnCommandBufferFenceSync) {
+    sync_t *s = arg_p(c, 1);
+    s->fenced = 1;
+    s->fence = nvn_fence_last() + 1;
+}
 // TOTK_SYNC_AHEAD=1: one more frame in flight. Each frame the game waits (one nvnSyncWait, frame_wait_lr) for
 // the frame it presented last; on the Switch that work is long done by then, here it is still in the replay and on the
 // GPU (about 11 ms from the submit), and the wait sets the frame time. With the switch on, that wait, and only that
