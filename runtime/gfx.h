@@ -27,6 +27,12 @@ uint64_t gfx_presents_shown(void);                         // presents queued si
 int gfx_frame_gen_halves(void);                            // and the frame limit counts the frames shown (frame_gen = 1)
 int gfx_frame_gen_live(void);                              // vk_fg.c: frames are being shown with a generated one before each
 int gfx_picture_rect(float out[4]);   // where the last present put the picture, fractions of the swapchain (x, y, w, h); 0 before one
+// NVIDIA Reflex (gfx_present.c, VK_NV_low_latency2): the NVN front end and the input service mark a frame's stages.
+// The markers and the sleep return at once with Reflex off or unsupported.
+void vk_reflex_marker(int marker, uint64_t present_id);   // present_id: the frame's (vk_reflex_frame_begin)
+uint64_t vk_reflex_frame_begin(void);   // SIMULATION_START: the new frame's present ID
+uint64_t vk_reflex_frame(void);         // the ID of the frame the game simulates now
+void vk_reflex_sleep(void);             // before SIMULATION_START: the driver's latency sleep
 
 // ---- shader service client (gfx_shader.c)
 enum { GFX_STAGE_VS, GFX_STAGE_TCS, GFX_STAGE_TES, GFX_STAGE_GS, GFX_STAGE_FS, GFX_STAGE_CS };

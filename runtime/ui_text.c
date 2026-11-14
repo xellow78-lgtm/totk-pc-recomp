@@ -198,6 +198,11 @@ static const char *const text_en[UI_TEXT_COUNT] = {
     [UI_MENU_MOTION_BLUR_DESC] = "Blurs what moves across the picture, the camera's motion and the characters' own, by "
                                  "this share of each frame's motion; 0 turns it off. The HUD stays sharp. Without "
                                  "DLSS, making the motion vectors costs some CPU time each frame. Applies at once.",
+    [UI_MENU_REFLEX] = "NVIDIA Reflex Low Latency",
+    [UI_MENU_REFLEX_DESC] = "Reduces system latency on NVIDIA GPUs using VK_NV_low_latency2. On + Boost keeps GPU clocks high in CPU-bound scenes.",
+    [UI_MENU_REFLEX_OFF] = "Off",
+    [UI_MENU_REFLEX_ON] = "On",
+    [UI_MENU_REFLEX_BOOST] = "On + Boost",
 
     [UI_MENU_FPS_LIMIT] = "Frame rate limit",
     [UI_MENU_FPS_LIMIT_DESC] = "The most frames per second the game draws. Above 60 is experimental and needs Game speed "
@@ -714,6 +719,11 @@ static const char *const text_ru[UI_TEXT_COUNT] = {
     [UI_MENU_MOTION_BLUR_DESC] = "Размывает то, что движется в кадре, — движение камеры и самих персонажей — на эту "
                                  "долю движения за кадр; 0 выключает. Интерфейс остаётся чётким. Без DLSS расчёт "
                                  "векторов движения отнимает немного времени процессора в каждом кадре. Действует сразу.",
+    [UI_MENU_REFLEX] = "NVIDIA Reflex Low Latency",
+    [UI_MENU_REFLEX_DESC] = "Снижает задержку системы на видеокартах NVIDIA с помощью VK_NV_low_latency2. «Вкл + Ускорение» удерживает высокие частоты GPU при упоре в процессор.",
+    [UI_MENU_REFLEX_OFF] = "Выкл",
+    [UI_MENU_REFLEX_ON] = "Вкл",
+    [UI_MENU_REFLEX_BOOST] = "Вкл + Ускорение",
 
     [UI_MENU_FPS_LIMIT] = "Ограничение частоты кадров",
     [UI_MENU_FPS_LIMIT_DESC] = "Наибольшее число кадров в секунду. Выше 60 — экспериментальный режим, нужна «Скорость "
@@ -1587,6 +1597,11 @@ static const char *const text_pt_br[UI_TEXT_COUNT] = {
                                  "por esta parte do movimento de cada quadro; 0 desliga. A interface continua nítida. "
                                  "Sem o DLSS, calcular os vetores de movimento custa um pouco de tempo de CPU a cada "
                                  "quadro. Vale na hora.",
+    [UI_MENU_REFLEX] = "NVIDIA Reflex Low Latency",
+    [UI_MENU_REFLEX_DESC] = "Reduz a latência do sistema em GPUs NVIDIA usando VK_NV_low_latency2. Ligado + Boost mantém os clocks da GPU altos quando limitado pela CPU.",
+    [UI_MENU_REFLEX_OFF] = "Desligado",
+    [UI_MENU_REFLEX_ON] = "Ligado",
+    [UI_MENU_REFLEX_BOOST] = "Ligado + Boost",
     [UI_MENU_TAB_CHEATS] = "Cheats",
     [UI_MENU_CHEATS_NONE] = "Nenhum cheat para esta versão do jogo. Os cheats de um mod são um arquivo de cheats do "
                             "Atmosphere na pasta cheats dele, com o nome da build do jogo: mods\\<mod>\\cheats\\%s. "
@@ -2224,6 +2239,11 @@ static const char *const text_zh_hans[UI_TEXT_COUNT] = {
     [UI_MENU_MOTION_BLUR] = "动态模糊",
     [UI_MENU_MOTION_BLUR_DESC] = "按每帧运动的这一比例模糊画面中移动的内容，包括镜头运动和角色自身的运动；0 为关闭。"
                                  "界面保持清晰。未开启 DLSS 时，计算运动矢量每帧会占用少量 CPU 时间。立即生效。",
+    [UI_MENU_REFLEX] = "NVIDIA Reflex 低延迟",
+    [UI_MENU_REFLEX_DESC] = "在支持 VK_NV_low_latency2 的 NVIDIA 显卡上降低系统延迟。开 + 增强 (On + Boost) 会在 CPU 瓶颈时保持 GPU 高频率。",
+    [UI_MENU_REFLEX_OFF] = "关",
+    [UI_MENU_REFLEX_ON] = "开",
+    [UI_MENU_REFLEX_BOOST] = "开 + 增强",
     [UI_MENU_TAB_CHEATS] = "金手指",
     [UI_MENU_CHEATS_NONE] = "此游戏版本没有金手指。模组的金手指是它的 cheats 文件夹中以游戏构建命名的 Atmosphere "
                             "金手指文件：mods\\<模组>\\cheats\\%s。重启游戏后才会读取。对于修改游戏代码的金手指，"
