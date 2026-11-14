@@ -291,6 +291,7 @@ static int g_flip_gen[2];
 static uint64_t g_last_pid;                     // the last present ID presented (g_pl): present IDs only go up
 static int g_reflex_mode = -1;   // 0=off, 1=on, 2=boost
 static uint32_t g_reflex_min_us = 1;
+static uint32_t g_reflex_want_us;   // the pacer's shortest frame in microseconds (frame_step_cap_ns), set each frame
 
 static int reflex_mode_from_cfg(void) {
     const char *v = cfg_value("TOTK_REFLEX");
@@ -318,10 +319,12 @@ static void reflex_apply_locked(void) {
         if (vkCreateSemaphore(c->device, &si, NULL, &g_reflex_sem) != VK_SUCCESS) return;
     }
     int mode = reflex_mode_from_cfg();
-    uint32_t min_us = 0;
-    int limit = cfg_int("TOTK_FPS_LIMIT");
-    if (limit > 0) min_us = (uint32_t)(1000000 / limit);
+    // The shortest frame the game's pacer allows, as vk_reflex_sleep last read it on the game thread; 0 before the
+    // first frame: no interval. The setting itself will not do: "display" is not a number, and with frame_gen = 1 the
+    // game draws half the limit.
+    uint32_t min_us = __atomic_load_n(&g_reflex_want_us, __ATOMIC_RELAXED);
     if (mode == g_reflex_mode && min_us == g_reflex_min_us) return;
+    int mode_changed = mode != g_reflex_mode;
     g_reflex_mode = mode;
     g_reflex_min_us = min_us;
     VkLatencySleepModeInfoNV mi = {
@@ -331,8 +334,10 @@ static void reflex_apply_locked(void) {
         .minimumIntervalUs = min_us
     };
     VkResult r = g_reflex_set_mode(c->device, g_sc, &mi);
-    rt_log("REFLEX: NVIDIA Reflex Low Latency -> %s (minInterval=%u us, VK_NV_low_latency2=%s)",
-           mode == 2 ? "ON + BOOST" : mode == 1 ? "ON" : "OFF", min_us, r == VK_SUCCESS ? "OK" : "ERR");
+    // the interval alone changes whenever generated frames start or stop (a menu): logged with the mode, or when it fails
+    if (mode_changed || r != VK_SUCCESS || (rt_trace & RT_TRACE_PERF))
+        rt_log("REFLEX: NVIDIA Reflex Low Latency -> %s (minInterval=%u us, VK_NV_low_latency2=%s)",
+               mode == 2 ? "ON + BOOST" : mode == 1 ? "ON" : "OFF", min_us, r == VK_SUCCESS ? "OK" : "ERR");
 }
 
 int vk_has_reflex(void) {
@@ -424,7 +429,17 @@ void vk_reflex_marker(int marker, uint64_t pid) {
 
 void vk_reflex_sleep(void) {
     VkCtx *c = vk_ctx();
-    if (!c || !c->has_nv_reflex || !g_reflex_sleep || !g_reflex_sem || g_reflex_mode <= 0 || !g_sc) return;
+    if (!c || !c->has_nv_reflex) return;
+    // The driver's minimum interval follows the pacer's limit: the monitor's rate once the window has measured it, half
+    // the limit while frames are generated under frame_gen = 1, the whole limit again in a menu.
+    uint32_t want_us = (uint32_t)(frame_step_cap_ns() / 1000);
+    if (want_us != __atomic_load_n(&g_reflex_want_us, __ATOMIC_RELAXED)) {
+        __atomic_store_n(&g_reflex_want_us, want_us, __ATOMIC_RELAXED);
+        plat_rmutex_lock(&g_pl);
+        reflex_apply_locked();
+        plat_rmutex_unlock(&g_pl);
+    }
+    if (!g_reflex_sleep || !g_reflex_sem || g_reflex_mode <= 0 || !g_sc) return;
     uint64_t val = __atomic_add_fetch(&g_reflex_val, 1, __ATOMIC_RELAXED);
     VkLatencySleepInfoNV si = {
         .sType = VK_STRUCTURE_TYPE_LATENCY_SLEEP_INFO_NV,
