@@ -26,6 +26,7 @@ GPU semantics behind the graphics rows: [maxwell.md](../maxwell.md). The method 
 | one flat ambient colour | a 1-layer 2D array sampled as 2D | the view type the shader expects |
 | upside-down text | lower-left window origin | origin mode in the log |
 | flicker or a texture swapped with a similar one | the newest texture picked at shared storage instead of the one with the matching view | texture lookup by id in the dump |
+| fullscreen picture soft and at the size of `window_size`, some starts only | the swapchain was built while the surface still reported the window's size from before the switch to fullscreen | `gfx: window WxH ..., swapchain WxH` at start; `gfx: swapchain ..., was ...` or `gfx: the surface still reports ...` after it |
 
 ## Timing and frame pacing
 

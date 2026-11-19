@@ -128,7 +128,10 @@ static VkSwapchainKHR g_sc;
 static VkFormat g_sc_fmt;
 static int g_sc_hdr;                        // HDR10 (TOTK_HDR, vk_hdr.c): PQ code values in Rec. 2020
 static VkExtent2D g_sc_ext;
-static int g_scaler;                        // the last present: 0 the game image 1:1, 1 scaled by the blit, 2 by FSR
+#define EXTENT_CHECKS 4096                  // presents after a swapchain build that still watch the surface's size
+#define EXTENT_CHECK_EVERY 16               // (extent_recheck): one read of it in this many presents
+static uint32_t g_extent_checks;
+static int g_scaler;                       // the last present: 0 the game image 1:1, 1 scaled by the blit, 2 by FSR
 static uint32_t g_sc_n;
 static VkImage g_sc_img[MAX_IMAGES];
 static VkImageView g_sc_view[MAX_IMAGES];   // colour attachment views for the menu overlay
@@ -609,7 +612,11 @@ static int build_swapchain(void) {
     g_sc_hdr = hdr;
     vk_hdr_set_active(hdr);
     if (hdr) vk_hdr_metadata(g_sc, 1);
+    if (g_sc_ext.width && (g_sc_ext.width != ext.width || g_sc_ext.height != ext.height))
+        rt_log("gfx: swapchain %ux%u, was %ux%u (window %dx%d)", ext.width, ext.height, g_sc_ext.width,
+               g_sc_ext.height, cw, ch);
     g_sc_ext = ext;
+    g_extent_checks = EXTENT_CHECKS;
     g_sc_n = MAX_IMAGES;
     vkGetSwapchainImagesKHR(c->device, g_sc, &g_sc_n, g_sc_img);
     VkSemaphoreCreateInfo semi = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
@@ -637,6 +644,30 @@ static int create_swapchain(void) {
     if (build_swapchain()) return 1;
     plat_xchg32(&g_dirty, 1);
     return 0;
+}
+
+// Once a present, g_pl held. For EXTENT_CHECKS presents after a swapchain is built, every EXTENT_CHECK_EVERY-th reads
+// the surface's size again and marks a swapchain of another size stale. The stale mark alone does not cover the switch
+// to fullscreen at start: the surface can still report the size from before the switch after the window has it and
+// its WM_SIZE is spent, and the driver then presents the smaller swapchain stretched without reporting it out of date
+// (NVIDIA 621.01, RTX 3060 Ti: a 1920x1080 swapchain in a 2560x1600 window for whole runs, four starts of seven).
+// When the checks end with the surface and the window still apart, one log line says so.
+static void extent_recheck(void) {
+    if (!g_sc || !g_extent_checks || --g_extent_checks % EXTENT_CHECK_EVERY) return;
+    VkSurfaceCapabilitiesKHR caps;
+    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_ctx()->phys, g_surface, &caps) != VK_SUCCESS) return;
+    VkExtent2D e = caps.currentExtent;
+    if (e.width == UINT32_MAX || !e.width || !e.height) return;   // the surface takes the swapchain's size; minimised
+    if (e.width != g_sc_ext.width || e.height != g_sc_ext.height) {
+        plat_xchg32(&g_dirty, 1);
+        return;
+    }
+    int cw = 0, ch = 0;
+    wsys_client_size(&cw, &ch);
+    static int logged;
+    if (!g_extent_checks && cw > 0 && ch > 0 && ((uint32_t)cw != e.width || (uint32_t)ch != e.height) && !logged++)
+        rt_log("gfx: the surface still reports %ux%u for a window of %dx%d; the swapchain keeps the surface's size",
+               e.width, e.height, cw, ch);
 }
 
 static void sync_barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImageLayout to, VkPipelineStageFlags2 s0,
@@ -847,6 +878,7 @@ static int present_image(VkImage src, VkImageLayout layout, VkFormat fmt, int w,
     VkCtx *c = vk_ctx();
     plat_rmutex_lock(&g_pl);
     if (!keep) flip_locked();
+    extent_recheck();
     if (!g_sc || plat_cas32(&g_dirty, 0, 0)) {
         if (!wsys_minimized() && !create_swapchain() && !g_sc) goto out;
     }
