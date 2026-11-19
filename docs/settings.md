@@ -29,6 +29,10 @@ Many rows below are developer tools that only act together with another setting 
 | `resolve_check` | `1` compares every cached pool lookup with the locked lookup and stops on a difference. | Slows every pool lookup; the game stops if the two ever differ. | Caution |
 | `speed_probe` | `1` adds the player's position and ground speed to the frame-rate line that `TOTK_TRACE=perf` prints every 120 presents. | Only adds log text; has no effect without `TOTK_TRACE=perf`. | Safe |
 | `ssr_debug` | `1` paints what the reflections act on over the picture (water magenta, smooth surfaces cyan by their weight); `2` shows the reflected colour alone wherever a ray hits. Read at each present. | The frame shows a debug image while it is set; has no effect when both reflection settings are off. | Caution |
+| `looks_trace` (default `0`) | `1` writes to the log the effect data of each armor piece the looks learn (`looks:   effects +000: ...` lines) and every pointer to an armor name in the first armor actors they search. | Log lines only. | Safe |
+| `look_head` | Looks (TotK 1.4.3): the armor actor shown on the head in place of the worn piece, as `<actor>` or `<actor>:<dye>`; empty shows the worn piece. Set from the inventory with ZL or the L key. Defense, set bonus and effects stay the worn piece's. | Another model in the slot; a piece worn under a look for the first time shows as itself until it is put on again. | Safe |
+| `look_upper` | As `look_head`, for the body. | As `look_head`. | Safe |
+| `look_lower` | As `look_head`, for the legs. | As `look_head`. | Safe |
 
 ## Profiling and measurement
 

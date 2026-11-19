@@ -431,6 +431,8 @@
 # (Armor_048_Head; the dye is the piece's colour number, -1 undyed); empty shows the worn piece. Defense and bonuses stay
 # those of the worn pieces. In the game: in the inventory, wear what you want to look like and press ZL or the L key to
 # lock it; the same button clears it. A slot shows a change the next time its item changes.
+# A piece worn under a look for the first time shows as itself while the game learns what it does (kept in
+# looks-stats.bin in the profile): take it off and put it back on once.
 # look_head =
 # look_upper =
 # look_lower =

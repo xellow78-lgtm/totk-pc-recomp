@@ -1109,3 +1109,12 @@ site climb main 1f497f4 1e201001 @page:x8 bd400104 1e286884 52946dc8 72a7e528 1e
 inline main 0xc48ac0 d10303ff
 inline main 0x1b7c4a4 71004f3f
 inline main 0x1b7cdc0 f9406fe8
+# And six in the function that reads each armor slot's defense, set, set bonus flag and effect data from the actor on
+# the player (main+0x4997c0): at the first five looks.c hands over the worn piece's values while a look is shown, at
+# the last (0x49ce20, after the three slots) it logs whether the game found a set bonus.
+inline main 0x49cc5c b97f1f09
+inline main 0x49cd00 34001794
+inline main 0x49cd90 34002808
+inline main 0x49cf78 2a0003f5
+inline main 0x49cde8 949c6b7a
+inline main 0x49ce20 37001233
