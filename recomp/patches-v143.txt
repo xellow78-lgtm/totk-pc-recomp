@@ -1102,3 +1102,10 @@ site cascade main 6fad4c 52a86408 @page:x8 b9404d08   # mov w8, #160.0 -> ldr w8
 # switches the set off without the real-time step, where the page is not written.
 set climb    TOTK_CLIMB_FIX      1
 site climb main 1f497f4 1e201001 @page:x8 bd400104 1e286884 52946dc8 72a7e528 1e270102 1e241842 52828248 72a7dfe8 1e270103 1e232842 529573e8 72a7b5a8 1e270103 1f040862 1e2a3883 2f00e404 1e246863 1e261004 1f048862 1e241004 1e247842 1e226800 1e201001 1e226821   # fmov s1, #2.0 -> s2 = g(u); s0 = max(s0, s2); s1 = max(2.0, s2)
+
+# Looks (runtime/looks.c): the inline points where the armor shown on the player can differ from the armor worn. The
+# entry of the function that makes a piece of equipment in the world, and two places in the one that makes the pouch
+# screen's: after it has copied the name it was given, and after it has taken a name from the pouch instead.
+inline main 0xc48ac0 d10303ff
+inline main 0x1b7c4a4 71004f3f
+inline main 0x1b7cdc0 f9406fe8

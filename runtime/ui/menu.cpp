@@ -1569,6 +1569,26 @@ static void perf_draw(const MenuTarget *t, float scale) {
     dl->AddText(ImVec2(p.x + pad, p.y + pad), IM_COL32(255, 255, 255, 235), g_perf_text);
 }
 
+// A line of the port over the game's picture (menu_note: looks.c tells that a look was locked or cleared), near the
+// top in the middle, for NOTE_NS. The text is ASCII, in the menu's font.
+#define NOTE_NS 4500000000ull
+static char g_note[160];
+static std::atomic<uint64_t> g_note_until;
+extern "C" void menu_note(const char *text) {
+    g_note_until.store(0);
+    snprintf(g_note, sizeof g_note, "%s", text);
+    g_note_until.store(plat_now_ns() + NOTE_NS);
+}
+static void note_draw(const MenuTarget *t, float scale) {
+    if (plat_now_ns() >= g_note_until.load()) return;
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    ImVec2 sz = ImGui::CalcTextSize(g_note);
+    float pad = 8 * scale;
+    ImVec2 p(((float)t->width - sz.x) / 2 - pad, 60 * scale);
+    dl->AddRectFilled(p, ImVec2(p.x + sz.x + pad * 2, p.y + sz.y + pad * 2), IM_COL32(0, 0, 0, 170), 4 * scale);
+    dl->AddText(ImVec2(p.x + pad, p.y + pad), IM_COL32(255, 255, 255, 240), g_note);
+}
+
 extern "C" int menu_overlay_frame(uint64_t frame, const MenuTarget *t, const char **shot) {
     *shot = NULL;
     cheats_frame(frame);   // the data cheats and the buttons of the cheats that need them held
@@ -1586,7 +1606,7 @@ extern "C" int menu_overlay_frame(uint64_t frame, const MenuTarget *t, const cha
             g_tab_request = 0;
             set_open(1);
             open = true;
-        } else if (!g_perf_mode) {
+        } else if (!g_perf_mode && plat_now_ns() >= g_note_until.load()) {
             return 0;
         }
     }
@@ -1638,6 +1658,7 @@ extern "C" int menu_overlay_frame(uint64_t frame, const MenuTarget *t, const cha
     ImGui::NewFrame();
     if (open) layout_menu(t->width, t->height, scale);
     perf_draw(t, scale);
+    note_draw(t, scale);
     ImGui::Render();
     if (open) g_save_pending = opt_save_tick(0);
     g_cost_ns += plat_now_ns() - t0;

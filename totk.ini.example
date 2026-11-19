@@ -427,6 +427,13 @@
 # the setup's rebuild at start (a few minutes) and starts again after it. off: the game starts with the code it has.
 # A rebuild that failed or was cancelled is not started again for the same cheats. Default: auto.
 # mods_rebuild = auto
+# Looks (TotK 1.4.3): the armor piece shown in a slot in place of the one worn, as "<actor>" or "<actor>:<dye>"
+# (Armor_048_Head; the dye is the piece's colour number, -1 undyed); empty shows the worn piece. Defense and bonuses stay
+# those of the worn pieces. In the game: in the inventory, wear what you want to look like and press ZL or the L key to
+# lock it; the same button clears it. A slot shows a change the next time its item changes.
+# look_head =
+# look_upper =
+# look_lower =
 # Extra room in MiB (0 to 4096) for the heap the world's textures stream into, for HD texture packs. Packs made for
 # emulators with 8 GB of DRAM grow it in their own HeapDef table (System/HeapSize/Product.Nin_NX_NVN.HeapDef.byml.zs):
 # the port reads that growth at start and applies it itself (about 3339 MiB for the HDPacks 4K pack), so such a pack

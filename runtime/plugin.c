@@ -170,6 +170,23 @@ static void host_inline(Cpu *c) {
                fp ? " (with vector registers)" : "");
 }
 
+// A function of the port itself at an inline point (looks.c), run before the plugins' functions with the registers in
+// the Cpu. Returns 0 when the game was built without an inline point at main + off (an `inline` line in the patch
+// file and a rebuild add it). Called before guest code runs.
+static void (**inline_hosts)(Cpu *c);
+int plugin_inline_host(uint64_t off, void (*fn)(Cpu *c)) {
+    uint64_t target = ldr_module(0)->base + off;
+    for (int i = 0; i < rt_inline_count; i++) {
+        if (rt_inline_addr[i] != target) continue;
+        if (!inline_hosts) inline_hosts = calloc((size_t)rt_inline_count + 1, sizeof *inline_hosts);
+        if (!inline_hosts) return 0;
+        inline_hosts[i] = fn;
+        __atomic_store_n(&rt_inline_on[i], 1, __ATOMIC_RELEASE);
+        return 1;
+    }
+    return 0;
+}
+
 // An inline point of the generated C (recomp/gen.py), before its instruction, with every register in the Cpu.
 // As exlaunch's stub does on the console: X30 goes on the stack, X0-X29 below it (0x100 bytes; with the vector
 // registers, Q0-Q31 below those), the function gets the address of that block in X0 and may change what is in it, and
@@ -177,6 +194,8 @@ static void host_inline(Cpu *c) {
 // registers; here both survive the plain form, which a hooked instruction cannot tell from a function that left them
 // alone. The newest hook of an instruction runs first.
 void rt_inline_hook(Cpu *c, int n) {
+    if (inline_hosts && inline_hosts[n]) inline_hosts[n](c);
+    if (!inlines) return;   // no plugin: the point is on for the port's own function alone
     const Inline *in = &inlines[n];
     for (int k = __atomic_load_n(&in->n, __ATOMIC_ACQUIRE) - 1; k >= 0; k--) {
         uint64_t sp = c->sp, lr = c->x[30], nzcv = c->nzcv, regs = sp - 0x110, block = in->fp[k] ? regs - 0x200 : regs;

@@ -329,6 +329,8 @@ void menu_cursor_poll(uint64_t *buttons) {
     Focus f = focus_now();
     char nm[48] = "";
     if (f.screen) layout_name(f.screen, nm, sizeof nm);
+    // The look's button: ZL on a gamepad, and the L key, since a mouse button bound to ZL is a click in the menus
+    looks_pouch(!strcmp(nm, "Pouch_00"), *buttons | (ikb_down(KEY_L) ? 1ull << B_ZL : 0));
     // The open screens are scanned every 100 ms, not at every pad read: each screen costs memory queries
     uint64_t now = plat_now_ms();
     static uint64_t map_at;

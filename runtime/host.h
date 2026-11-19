@@ -207,6 +207,9 @@ int ldr_is_plugin(int i);                                  // module i is a mod'
 // ---- a mod's plugin (plugin.c): a subsdk module of a mod, lifted with the game
 void plugin_init(void);                                    // after ldr_load, before hostfn_seal
 void plugin_start(Cpu *c);                                 // the plugins' DT_INIT, after the game's module constructors
+int plugin_inline_host(uint64_t off, void (*fn)(Cpu *c)); // the port's own function at an inline point of main; 0: not built in
+void looks_init(void);                                     // looks.c, after plugin_init
+void looks_pouch(int pouch, uint64_t buttons);             // looks.c: a pad read, with the pouch screen in focus or not
 int plugin_svc(Cpu *c, uint32_t imm, uint64_t pc);         // 1: an SVC made inside a plugin, answered
 uint64_t plugin_data_symbol(const char *name);             // a data symbol of the console's dynamic linker, 0 if none
 void plugin_exit_report(void);                             // before the process ends: what the plugins did, to the log
