@@ -209,6 +209,8 @@ void plugin_init(void);                                    // after ldr_load, be
 void plugin_start(Cpu *c);                                 // the plugins' DT_INIT, after the game's module constructors
 int plugin_inline_host(uint64_t off, void (*fn)(Cpu *c)); // the port's own function at an inline point of main; 0: not built in
 void looks_init(void);                                     // looks.c, after plugin_init
+void animtrace_init(void);                                 // animtrace.c, after plugin_init
+void scabbard_init(void);                                  // scabbard.c, after plugin_init
 void looks_pouch(int pouch, uint64_t buttons);             // looks.c: a pad read, with the pouch screen in focus or not
 int plugin_svc(Cpu *c, uint32_t imm, uint64_t pc);         // 1: an SVC made inside a plugin, answered
 uint64_t plugin_data_symbol(const char *name);             // a data symbol of the console's dynamic linker, 0 if none

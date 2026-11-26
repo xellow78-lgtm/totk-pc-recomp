@@ -1118,3 +1118,10 @@ inline main 0x49cd90 34002808
 inline main 0x49cf78 2a0003f5
 inline main 0x49cde8 949c6b7a
 inline main 0x49ce20 37001233
+# A greatsword's scabbard follows the greatsword (runtime/scabbard.c): the branch after a main-weapon piece is asked
+# for its weapon component, and the scabbard's read of the bone name it hangs on.
+inline main 0xb588e8 b40003e0
+inline main 0x601ad0 f9400017
+# runtime/animtrace.c (anim_trace = 1 logs, dual_left_draw = 1 adds the left arm's request to a draw on the move): the
+# entry of the helper the player's equipment code uses to ask one of Link's animation slots for a command.
+inline main 0x23ec64c a9bb7bfd

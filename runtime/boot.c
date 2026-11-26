@@ -349,6 +349,8 @@ void rt_boot(void) {
     rt_patches_init();
     plugin_init();
     looks_init();
+    scabbard_init();
+    animtrace_init();
     mods_exefs_switch();   // after the patch sets' settings: an enabled mod's ExeFS patches on
     frame_step_init();
     res_init();

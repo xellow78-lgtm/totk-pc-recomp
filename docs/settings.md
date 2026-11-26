@@ -33,6 +33,10 @@ Many rows below are developer tools that only act together with another setting 
 | `look_head` | Looks (TotK 1.4.3): the armor actor shown on the head in place of the worn piece, as `<actor>` or `<actor>:<dye>`; empty shows the worn piece. Set from the inventory with ZL or the L key. Defense, set bonus and effects stay the worn piece's. | Another model in the slot; a piece worn under a look for the first time shows as itself until it is put on again. | Safe |
 | `look_upper` | As `look_head`, for the body. | As `look_head`. | Safe |
 | `look_lower` | As `look_head`, for the legs. | As `look_head`. | Safe |
+| `scabbard_back` (default `1`) | A greatsword's scabbard hangs on the greatsword's bone (TotK 1.4.3), for mods that give Link's equipment settings a bone of their own for greatswords; the game alone hangs every scabbard on the sword's bone. Needs the two `inline` points of runtime/scabbard.c in the patch file. Read at start. | Without such a mod nothing changes. | Safe |
+| `scabbard_trace` (default `0`) | `1` logs each time `scabbard_back` moves a scabbard or sees a new main weapon kind. Read at start. | A log line per change. | Safe |
+| `anim_trace` (default `0`) | Diagnostic: logs each animation command the player's equipment code asks one of Link's animation slots for (time in ms, slot, command, flags, caller) whenever it differs from the slot's last one, and how often the last one was repeated (TotK 1.4.3). Needs the `inline` point of runtime/animtrace.c in the patch file. Read at start. | A few log lines per draw or put-away. | Safe |
+| `dual_left_draw` (default `0`) | For the two-sword and hip-greatsword mods (TotK 1.4.3), whose left-arm draw is the head of the left-arm slot's command: the game asks that slot for the command only in a standing draw, so on the move the left arm kept its standing pose. `1` makes every upper-body draw request ask the left-arm slot too. Same `inline` point as `anim_trace`. Read at start. | None. | Caution |
 
 ## Profiling and measurement
 
