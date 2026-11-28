@@ -614,6 +614,15 @@ class Reach(unittest.TestCase):
         hooks, _ = xp.check_record(rec, IMPLS)
         self.assertEqual(xp.reach_check(rec, hooks, IMPLS)[0], [])
 
+    def test_check_allows_query_memory(self):   # a read-only query: BotW Abilities checks a pointer before reading
+        rec = record()
+        img = bytearray(rec['images']['plugin0'])
+        struct.pack_into('<II', img, CB_OFF, 0xD40000C1, RET_W)   # svc 0x6
+        struct.pack_into('<I', img, IMPL_OFF, RET_W)
+        rec['images']['plugin0'] = bytes(img)
+        hooks, _ = xp.check_record(rec, IMPLS)
+        self.assertEqual(xp.reach_check(rec, hooks, IMPLS)[0], [])
+
     def test_check_allows_output_debug_string(self):
         rec = record()
         img = bytearray(rec['images']['plugin0'])

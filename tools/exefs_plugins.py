@@ -135,9 +135,11 @@ REACH_IMPORTS = SAFE_LIBC | {SNPRINTF} | OS_MUTEX | OS_TIME | HOST_FS | LANGUAGE
 # the module loader (nn::ro), the C runtime's start, the thread-local allocator hook and the shader compiler.
 GAME_IMPORTS_LEFT_OUT = re.compile(r'_ZN2nn2ro|__nnmusl_init|SetMemoryAllocatorForThreadLocal|^glslc')
 # svcs the code the hooks reach may make: OutputDebugString (the log), GetSystemTick and SleepThread, which the
-# runtime serves to every game thread the same way, and Break, an abort or a failed assert, which ends the game with
-# the reason in the log as it ends it on the Switch (runtime/svc.c).
-REACH_SVCS = {0x0B, 0x1E, 0x26, 0x27}
+# runtime serves to every game thread the same way, Break, an abort or a failed assert, which ends the game with
+# the reason in the log as it ends it on the Switch, and QueryMemory, a read-only question about the address space
+# that runtime/svc.c answers on any thread from memory.c mem_query under its shared lock (BotW Abilities asks it
+# before each read through a game pointer, so a stale pointer is skipped instead of read).
+REACH_SVCS = {0x06, 0x0B, 0x1E, 0x26, 0x27}
 # exlaunch's inline-hook entry points. Each saves the registers its context holds, calls the callback with that context
 # and restores them; none saves NZCV (recomp/flags.py). exl_inline_hook_with_fp_impl (Magic of the Kingdom) saves
 # d0..d15 next to x0..x29.
